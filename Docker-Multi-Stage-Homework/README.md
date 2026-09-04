@@ -1,4 +1,3 @@
-cat > Docker-Multi-Stage-Homework/README.md <<'EOF'
 # Docker Multi-Stage Build Homework
 
 ## Student Details
