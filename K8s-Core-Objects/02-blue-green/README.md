@@ -190,7 +190,7 @@ The endpoints changed from the Blue pod IPs to the Green pod IPs, confirming tha
 
 ### Screenshot
 
-![Green Endpoints](screenshots/step-5-green-endpoints.png)
+![Green Endpoints](screenshots/step-5-green-selector-endpoints.png)
 
 ---
 
