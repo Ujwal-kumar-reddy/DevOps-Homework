@@ -47,18 +47,18 @@ The objectives of this assignment are:
 ├── deployment-v1.yaml
 ├── deployment-v2.yaml
 ├── service.yaml
-├── version-1-pods-running.png
-├── version-1-rollout-success.png
-├── version-1-application-verification.png
-├── version-2-rolling-update.png
-├── version-2-pods-running.png
-├── version-2-application-verification.png
-├── rollout-history.png
-├── rollback-successful.png
-└── final-version-1-pods-and-verification.png
+└── screenshots
+    ├── version-1-pods-running.png
+    ├── version-1-rollout-success.png
+    ├── version-1-application-verification.png
+    ├── version-2-rolling-update.png
+    ├── version-2-pods-running.png
+    ├── version-2-application-verification.png
+    ├── rollout-history.png
+    └── rollback-successful.png
 ```
 
-The screenshots are stored directly beside this README. No separate screenshots folder is required.
+The screenshots are stored inside the `screenshots` folder within `01-rolling-update`.
 
 ---
 
@@ -110,11 +110,11 @@ All four replicas were running with the label `version=v1`.
 
 ### Screenshot – Version 1 Pods
 
-![Version 1 Pods Running](version-1-pods-running.png)
+![Version 1 Pods Running](screenshots/version-1-pods-running.png)
 
 ### Screenshot – Version 1 Rollout Successful
 
-![Version 1 Rollout Successful](version-1-rollout-success.png)
+![Version 1 Rollout Successful](screenshots/version-1-rollout-success.png)
 
 ---
 
@@ -162,7 +162,7 @@ This confirmed that the application was serving Version 1.
 
 ### Screenshot – Version 1 Application Verification
 
-![Version 1 Application Verification](version-1-application-verification.png)
+![Version 1 Application Verification](screenshots/version-1-application-verification.png)
 
 ---
 
@@ -201,7 +201,7 @@ deployment "app-rolling" successfully rolled out
 
 ### Screenshot – Version 2 Rolling Update
 
-![Version 2 Rolling Update](version-2-rolling-update.png)
+![Version 2 Rolling Update](screenshots/version-2-rolling-update.png)
 
 The Pods were then checked using:
 
@@ -227,7 +227,7 @@ The output shows the old v1 Pods entering `Terminating` while the new v2 Pods we
 
 ### Screenshot – Version 2 Pods Running
 
-![Version 2 Pods Running](version-2-pods-running.png)
+![Version 2 Pods Running](screenshots/version-2-pods-running.png)
 
 ---
 
@@ -251,7 +251,7 @@ This confirmed that Version 2 was being served through the Service.
 
 ### Screenshot – Version 2 Application Verification
 
-![Version 2 Application Verification](version-2-application-verification.png)
+![Version 2 Application Verification](screenshots/version-2-application-verification.png)
 
 ---
 
@@ -279,7 +279,7 @@ The Deployment contained two revisions:
 
 ### Screenshot – Deployment Rollout History
 
-![Deployment Rollout History](rollout-history.png)
+![Deployment Rollout History](screenshots/rollout-history.png)
 
 ---
 
@@ -318,7 +318,7 @@ deployment "app-rolling" successfully rolled out
 
 ### Screenshot – Rollback Successful
 
-![Rollback Successful](rollback-successful.png)
+![Rollback Successful](screenshots/rollback-successful.png)
 
 The final Pods were checked using:
 
@@ -351,10 +351,6 @@ curl.exe http://localhost:30010
 ```text
 <html><body><h1>VERSION: v1</h1></body></html>
 ```
-
-### Screenshot – Final Version 1 Pods and Verification
-
-![Final Version 1 Pods and Verification](final-version-1-pods-and-verification.png)
 
 This confirmed that the rollback restored Version 1.
 
