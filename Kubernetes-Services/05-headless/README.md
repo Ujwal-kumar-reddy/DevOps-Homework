@@ -1,47 +1,99 @@
-# 05 - Headless Service
+# Headless Service (`clusterIP: None`) — Direct Pod-to-Pod Discovery
 
-## Objective
+## 1. What is a Headless Service?
 
-Create and test a Kubernetes Headless Service and verify that Kubernetes DNS returns the individual Pod IP addresses instead of a virtual ClusterIP.
+By default, a Kubernetes Service acts as a Layer 4 proxy: it allocates a single virtual IP (**ClusterIP**) and load balances traffic across backend Pods.
 
-> **Environment:** Docker Desktop Kubernetes (local single-node cluster)
+However, sometimes you do **not** want a single virtual IP. You want direct network access to individual Pods.
 
----
+A **Headless Service** is created by setting:
 
-## Folder Structure
-
-```text
-05-headless/
-├── app-deployment.yaml
-├── client-pod.yaml
-├── service.yaml
-├── README.md
-└── screenshots/
-    ├── 01-headless-pods-running.png
-    ├── 02-headless-service.png
-    ├── 03-headless-endpoints.png
-    ├── 04-headless-dns-test.png
-    └── 05-headless-application-test.png
+```yaml
+spec:
+  clusterIP: None
 ```
 
+When `clusterIP: None` is set:
+
+1. Kubernetes does not allocate a virtual IP.
+2. `kube-proxy` does not configure normal Service load-balancing rules.
+3. When a client performs a DNS lookup on the Service name, **CoreDNS returns the individual IP addresses of the matching Pods directly**.
+
 ---
 
-## 1. Application Deployment
+## 2. Regular Service vs Headless Service
 
-The deployment creates 3 NGINX replicas.
+| Feature | Regular Service (`type: ClusterIP`) | Headless Service (`clusterIP: None`) |
+| :--- | :--- | :--- |
+| **Virtual IP** | Allocated | **None** |
+| **Load Balancing** | Handled through the Service | Handled by the client/application |
+| **DNS Lookup Returns** | Single virtual IP | **List of matching Pod IPs** |
+| **Individual Pod DNS** | Not provided in the same StatefulSet-oriented form | **Yes** with StatefulSet + Headless Service |
+| **Primary Workload** | Stateless applications | **Stateful distributed systems** |
 
-### Manifest
+---
 
-`app-deployment.yaml`
+## 3. Why Do We Need Headless Services?
+
+Clustered systems such as Kafka, MongoDB Replica Sets, Redis Cluster, Elasticsearch, ZooKeeper, and PostgreSQL replication may require clients or cluster members to discover and communicate with specific Pods.
+
+With a Headless Service paired with a StatefulSet, each Pod receives a predictable hostname:
+
+```text
+web-stateful-0.web-service-headless.default.svc.cluster.local
+web-stateful-1.web-service-headless.default.svc.cluster.local
+web-stateful-2.web-service-headless.default.svc.cluster.local
+```
+
+The Service name resolves to the individual Pod IP addresses:
+
+```text
+web-service-headless
+        |
+        v
+CoreDNS
+        |
+        +---- 10.1.0.63  -> web-stateful-0
+        +---- 10.1.0.64  -> web-stateful-1
+        +---- 10.1.0.65  -> web-stateful-2
+```
+
+The client can also resolve a specific StatefulSet Pod directly.
+
+---
+
+## 4. Phone Directory vs Switchboard
+
+A standard Service can be compared to a company switchboard: one number receives the request and the system routes it to an available backend.
+
+A Headless Service is more like a directory containing the individual addresses of the available Pods. The client can discover the individual endpoints and choose which one to contact.
+
+---
+
+## 5. Where is Headless Service Used?
+
+Headless Services are commonly useful for:
+
+- Distributed quorum clusters such as Kafka, ZooKeeper, RabbitMQ, etcd, and Cassandra.
+- Master-replica database topologies such as MySQL, PostgreSQL, and MongoDB replica sets.
+- Client-side load balancing such as gRPC or Envoy.
+- Stateful cache clusters such as Redis Cluster.
+
+---
+
+## 6. Code Manifests & Field-by-Field Breakdown
+
+### File: `app-statefulset.yaml`
 
 ```yaml
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
-  name: web-app-headless
+  name: web-stateful
   labels:
     app: web-headless
 spec:
+  serviceName: web-service-headless
   replicas: 3
   selector:
     matchLabels:
@@ -52,10 +104,11 @@ spec:
         app: web-headless
     spec:
       containers:
-        - name: web-server
+        - name: nginx-stateful
           image: nginx:1.25-alpine
           ports:
-            - containerPort: 80
+            - name: web
+              containerPort: 80
           resources:
             requests:
               cpu: "50m"
@@ -65,46 +118,7 @@ spec:
               memory: "128Mi"
 ```
 
-### Apply
-
-```powershell
-kubectl apply -f Kubernetes-Services/05-headless/app-deployment.yaml
-```
-
-### Verify
-
-```powershell
-kubectl get pods -l app=web-headless -o wide
-```
-
-### Actual Result
-
-```text
-NAME                                READY   STATUS    RESTARTS   AGE   IP          NODE
-web-app-headless-6cc78f596b-8sj94   1/1     Running   0          8s    10.1.0.58   docker-desktop
-web-app-headless-6cc78f596b-lglds   1/1     Running   0          8s    10.1.0.59   docker-desktop
-web-app-headless-6cc78f596b-sd47v   1/1     Running   0          8s    10.1.0.60   docker-desktop
-```
-
-All 3 Pods were running successfully.
-
-### Screenshot
-
-![Headless Pods](screenshots/01-headless-pods-running.png)
-
----
-
-## 2. Headless Service
-
-A Headless Service is created by setting:
-
-```yaml
-clusterIP: None
-```
-
-### Manifest
-
-`service.yaml`
+### File: `service.yaml`
 
 ```yaml
 apiVersion: v1
@@ -118,96 +132,19 @@ spec:
   selector:
     app: web-headless
   ports:
-    - name: http
+    - name: web
       port: 80
       targetPort: 80
       protocol: TCP
 ```
 
-### Apply
-
-```powershell
-kubectl apply -f Kubernetes-Services/05-headless/service.yaml
-```
-
-Kubernetes displayed:
-
-```text
-Warning: spec.SessionAffinity is ignored for headless services
-service/web-service-headless created
-```
-
-The Service was created successfully. The warning is informational and does not prevent the Headless Service from working.
-
-### Verify
-
-```powershell
-kubectl get svc web-service-headless
-```
-
-### Actual Result
-
-```text
-NAME                   TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)
-web-service-headless   ClusterIP   None         <none>        80/TCP
-```
-
-The key result is:
-
-```text
-CLUSTER-IP = None
-```
-
-### Screenshot
-
-![Headless Service](screenshots/02-headless-service.png)
-
----
-
-## 3. Service Endpoints
-
-Verify the endpoints:
-
-```powershell
-kubectl get endpoints web-service-headless
-```
-
-### Actual Result
-
-```text
-NAME                   ENDPOINTS
-web-service-headless   10.1.0.58:80,10.1.0.59:80,10.1.0.60:80
-```
-
-The Headless Service points directly to the 3 application Pod IPs.
-
-Kubernetes also displayed a version warning because the legacy `Endpoints` API is deprecated in Kubernetes v1.33+:
-
-```text
-Warning: v1 Endpoints is deprecated in v1.33+; use discovery.k8s.io/v1 EndpointSlice
-```
-
-This warning does not affect the exercise.
-
-### Screenshot
-
-![Headless Endpoints](screenshots/03-headless-endpoints.png)
-
----
-
-## 4. Client Pod
-
-A temporary client Pod was created to test Kubernetes DNS from inside the cluster.
-
-### Manifest
-
-`client-pod.yaml`
+### File: `client-pod.yaml`
 
 ```yaml
 apiVersion: v1
 kind: Pod
 metadata:
-  name: headless-client
+  name: headless-dns-client
 spec:
   containers:
     - name: curl
@@ -217,244 +154,210 @@ spec:
         - "3600"
 ```
 
-### Apply
+### Key Field Explanations
+
+- `spec.clusterIP: None` — the defining field that creates a Headless Service.
+- `spec.serviceName: web-service-headless` in the StatefulSet — associates the StatefulSet with the Headless Service and enables predictable Pod DNS names.
+- `replicas: 3` — creates `web-stateful-0`, `web-stateful-1`, and `web-stateful-2`.
+
+---
+
+## 7. How to Run and Deploy
+
+### Step 1: Apply the Headless Service
+
+```powershell
+kubectl apply -f Kubernetes-Services/05-headless/service.yaml
+```
+
+Verify:
+
+```powershell
+kubectl get svc web-service-headless
+```
+
+Actual result:
+
+```text
+NAME                   TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)
+web-service-headless   ClusterIP   None         <none>        80/TCP
+```
+
+The important point is:
+
+```text
+CLUSTER-IP = None
+```
+
+### Screenshot
+
+![Headless Service](screenshots/01-headless-service.png)
+
+---
+
+### Step 2: Apply the StatefulSet
+
+```powershell
+kubectl apply -f Kubernetes-Services/05-headless/app-statefulset.yaml
+```
+
+Verify:
+
+```powershell
+kubectl get pods -l app=web-headless -o wide
+```
+
+Actual Docker Desktop result:
+
+```text
+NAME             READY   STATUS    IP
+web-stateful-0   1/1     Running   10.1.0.63
+web-stateful-1   1/1     Running   10.1.0.64
+web-stateful-2   1/1     Running   10.1.0.65
+```
+
+All three Pods were running on the `docker-desktop` node.
+
+### Screenshot
+
+![StatefulSet Pods](screenshots/02-headless-stateful-pods.png)
+
+---
+
+## 8. How to Check DNS & Traffic on the Headless Service
+
+### Step 1: Deploy Test Pod
 
 ```powershell
 kubectl apply -f Kubernetes-Services/05-headless/client-pod.yaml
 ```
 
-The manifest was applied successfully and a second apply returned:
-
-```text
-pod/headless-client unchanged
-```
-
-### Verify
+Verify:
 
 ```powershell
-kubectl get pod headless-client
+kubectl get pod headless-dns-client
 ```
 
-### Actual Result
+The Pod reached:
 
 ```text
-NAME              READY   STATUS    RESTARTS   AGE
-headless-client   1/1     Running   0          17s
+headless-dns-client   1/1   Running
 ```
 
 ---
 
-## 5. Headless DNS Test
+### Step 2: DNS Lookup on Service Name
 
-The DNS name was tested from inside the client Pod:
-
-```powershell
-kubectl exec headless-client -- nslookup web-service-headless
-```
-
-### Actual Result
-
-The Kubernetes DNS server was:
-
-```text
-10.96.0.10
-```
-
-The full Service DNS name resolved to all three individual Pod IP addresses:
-
-```text
-Name:   web-service-headless.default.svc.cluster.local
-Address: 10.1.0.59
-
-Name:   web-service-headless.default.svc.cluster.local
-Address: 10.1.0.60
-
-Name:   web-service-headless.default.svc.cluster.local
-Address: 10.1.0.58
-```
-
-The command also printed NXDOMAIN responses for shorter DNS forms before successfully resolving the full Service FQDN. The final results demonstrate that the Headless Service DNS name resolves directly to the individual Pods.
-
-The command ended with:
-
-```text
-command terminated with exit code 1
-```
-
-Despite that exit code, the relevant DNS lookup succeeded and returned all three Pod IP addresses.
-
-### Screenshot
-
-![Headless DNS Test](screenshots/04-headless-dns-test.png)
-
----
-
-## 6. Application Test
-
-The NGINX application was tested through the Headless Service:
+Run:
 
 ```powershell
-kubectl exec headless-client -- curl -I http://web-service-headless
+kubectl exec headless-dns-client -- nslookup web-service-headless
 ```
 
-### Actual Result
-
-```text
-HTTP/1.1 200 OK
-Server: nginx/1.25.5
-Date: Sun, 20 Sep 2026 10:38:15 GMT
-Content-Type: text/html
-Content-Length: 615
-Last-Modified: Tue, 16 Apr 2024 15:47:06 GMT
-Connection: keep-alive
-ETag: "661e9d7a-267"
-Accept-Ranges: bytes
-```
-
-The `200 OK` response confirms successful HTTP communication through the Headless Service.
-
-### Screenshot
-
-![Headless Application Test](screenshots/05-headless-application-test.png)
-
----
-
-## 7. How a Headless Service Works
-
-A normal ClusterIP Service provides a virtual ClusterIP:
-
-```text
-Client
-  |
-  v
-ClusterIP
-  |
-  +----> Pod 1
-  +----> Pod 2
-  +----> Pod 3
-```
-
-A Headless Service has:
-
-```text
-clusterIP: None
-```
-
-and DNS returns the individual Pod addresses:
-
-```text
-Client
-  |
-  v
-Headless Service DNS
-  |
-  +----> 10.1.0.58
-  +----> 10.1.0.59
-  +----> 10.1.0.60
-```
-
-In this exercise:
+The successful DNS response returned all three Pod IPs:
 
 ```text
 web-service-headless.default.svc.cluster.local
+Address: 10.1.0.65
+Address: 10.1.0.64
+Address: 10.1.0.63
 ```
 
-resolved to:
+The order of the returned addresses is not important. The important result is that **all three individual Pod IPs were returned**, rather than a single virtual IP.
+
+The command also displayed NXDOMAIN responses for some DNS search forms before successfully resolving the full Kubernetes Service name. The final successful records demonstrate the Headless Service behavior.
+
+### Screenshot
+
+![Headless Service DNS](screenshots/03-headless-service-dns.png)
+
+---
+
+### Step 3: Direct DNS Lookup for a Specific Pod
+
+Query Pod 0:
+
+```powershell
+kubectl exec headless-dns-client -- nslookup web-stateful-0.web-service-headless.default.svc.cluster.local
+```
+
+Actual result:
 
 ```text
-10.1.0.58
-10.1.0.59
-10.1.0.60
+Name:    web-stateful-0.web-service-headless.default.svc.cluster.local
+Address: 10.1.0.63
 ```
 
----
+This demonstrates that the StatefulSet Pod has a stable, specific DNS hostname.
 
-## 8. Key Difference from ClusterIP
+### Screenshot
 
-| Feature | ClusterIP Service | Headless Service |
-|---|---|---|
-| ClusterIP | Assigned | `None` |
-| Virtual Service IP | Yes | No |
-| DNS result | Service IP | Individual Pod IPs |
-| Pod selector | Yes | Yes |
-| Direct Pod discovery through DNS | No | Yes |
+![Specific StatefulSet Pod DNS](screenshots/04-headless-pod-dns.png)
 
 ---
 
-## 9. Cleanup
+### Step 4: Curl Pod 0 Directly by Its Unique Hostname
 
-After the screenshots were captured, the temporary resources should be removed:
+Run:
 
 ```powershell
-kubectl delete -f Kubernetes-Services/05-headless/service.yaml
+kubectl exec headless-dns-client -- curl -s http://web-stateful-0.web-service-headless:80
+```
+
+The request successfully returned the NGINX welcome page:
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+...
+</html>
+```
+
+This confirms direct access to `web-stateful-0` through its StatefulSet DNS hostname.
+
+### Screenshot
+
+![Direct Pod Curl](screenshots/05-headless-pod-direct-curl.png)
+
+---
+
+## 9. Key Summary Comparison: When to Use Which Service?
+
+- Use **`ClusterIP`** for standard stateless microservice-to-microservice traffic.
+- Use **`NodePort`** when direct host-level access is required.
+- Use **`LoadBalancer`** for external/public traffic in cloud environments.
+- Use **`ExternalName`** when an application needs an internal DNS alias for an external service.
+- Use **`Headless (clusterIP: None)`** when stateful distributed systems need discovery of individual Pods.
+
+---
+
+## 10. Cleanup
+
+After the screenshots are captured:
+
+```powershell
 kubectl delete -f Kubernetes-Services/05-headless/client-pod.yaml
-kubectl delete -f Kubernetes-Services/05-headless/app-deployment.yaml
-```
-
-Then verify:
-
-```powershell
-kubectl get pods
-kubectl get svc
-```
-
-Only the temporary Headless Service exercise resources should be removed. Existing Session 10 workloads and Services should remain.
-
----
-
-## 10. Commands Summary
-
-```powershell
-# Create application
-kubectl apply -f Kubernetes-Services/05-headless/app-deployment.yaml
-
-# Verify Pods
-kubectl get pods -l app=web-headless -o wide
-
-# Create Headless Service
-kubectl apply -f Kubernetes-Services/05-headless/service.yaml
-
-# Verify Service
-kubectl get svc web-service-headless
-
-# Verify endpoints
-kubectl get endpoints web-service-headless
-
-# Create client Pod
-kubectl apply -f Kubernetes-Services/05-headless/client-pod.yaml
-
-# Verify client
-kubectl get pod headless-client
-
-# Test Headless DNS
-kubectl exec headless-client -- nslookup web-service-headless
-
-# Test application
-kubectl exec headless-client -- curl -I http://web-service-headless
-
-# Cleanup
+kubectl delete -f Kubernetes-Services/05-headless/app-statefulset.yaml
 kubectl delete -f Kubernetes-Services/05-headless/service.yaml
-kubectl delete -f Kubernetes-Services/05-headless/client-pod.yaml
-kubectl delete -f Kubernetes-Services/05-headless/app-deployment.yaml
-
-# Final verification
-kubectl get pods
-kubectl get svc
 ```
+
+The existing Session 10 workloads and Services should remain untouched.
 
 ---
 
-## Conclusion
+## 11. Verification Summary
 
-The Headless Service was successfully created and tested.
+This exercise successfully demonstrated:
 
-The exercise demonstrated:
-
-- Creating a Deployment with 3 NGINX replicas
-- Creating a Headless Service using `clusterIP: None`
-- Verifying that the Service has no ClusterIP
-- Verifying that the Service endpoints contain the individual Pod IPs
-- Testing Kubernetes DNS resolution from inside a Pod
-- Confirming that the Headless Service DNS name resolves to all three Pod IPs
-- Successfully accessing the NGINX application through the Headless Service with an HTTP `200 OK`
-- Understanding the difference between a normal ClusterIP Service and a Headless Service
+1. A Headless Service with `clusterIP: None`.
+2. A 3-replica StatefulSet:
+   - `web-stateful-0` → `10.1.0.63`
+   - `web-stateful-1` → `10.1.0.64`
+   - `web-stateful-2` → `10.1.0.65`
+3. DNS resolution of the Headless Service to all three Pod IPs.
+4. DNS resolution of the specific Pod:
+   - `web-stateful-0.web-service-headless.default.svc.cluster.local`
+   - `10.1.0.63`
+5. Direct HTTP access to Pod 0 using its unique StatefulSet DNS hostname.

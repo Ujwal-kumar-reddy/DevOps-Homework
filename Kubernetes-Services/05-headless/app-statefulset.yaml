@@ -1,10 +1,11 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
-  name: web-app-headless
+  name: web-stateful
   labels:
     app: web-headless
 spec:
+  serviceName: web-service-headless
   replicas: 3
   selector:
     matchLabels:
@@ -15,10 +16,11 @@ spec:
         app: web-headless
     spec:
       containers:
-        - name: web-server
+        - name: nginx-stateful
           image: nginx:1.25-alpine
           ports:
-            - containerPort: 80
+            - name: web
+              containerPort: 80
           resources:
             requests:
               cpu: "50m"

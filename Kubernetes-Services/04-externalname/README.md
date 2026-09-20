@@ -1,43 +1,106 @@
-# 04 - ExternalName Service
+# ExternalName (External DNS) Service — Bridging Outside Infrastructure
 
-## Objective
+## 1. What is an ExternalName Service?
 
-Create and test a Kubernetes `ExternalName` Service that maps a Kubernetes Service DNS name to an external DNS name.
+An `ExternalName` Service is a Kubernetes Service that has no selector, no Pod backends, and no ClusterIP address.
 
-> **Environment:** Docker Desktop Kubernetes (local single-node cluster)
+Instead of routing traffic through a Kubernetes virtual IP, it acts as an internal DNS CNAME alias managed by CoreDNS. When an application inside the cluster queries the Service name, CoreDNS returns a CNAME pointing to the configured external fully qualified domain name (FQDN).
 
 ---
 
-## Folder Structure
+## 2. Why Do We Need ExternalName?
+
+An ExternalName Service provides an unchanging internal DNS name for an external service.
+
+For example, application code can use:
 
 ```text
-04-externalname/
-├── client-pod.yaml
-├── service.yaml
-├── README.md
-└── screenshots/
-    ├── 01-externalname-client-pod.png
-    ├── 02-externalname-service.png
-    ├── 03-externalname-service-details.png
-    ├── 04-externalname-dns-test.png
-    └── 05-externalname-application-test.png
+http://external-database-service
+```
+
+while Kubernetes maps that name to an external hostname such as:
+
+```text
+api.github.com
+```
+
+If the external destination changes, the Kubernetes Service definition can be updated without changing the application code.
+
+### Request Flow
+
+```text
++-------------------------------------------------------------+
+| Kubernetes Cluster                                          |
+|                                                             |
+|   +---------------+                                         |
+|   | App Pod       |                                         |
+|   +---------------+                                         |
+|          |                                                  |
+|          | DNS Query: "external-database-service"           |
+|          v                                                  |
+|   +---------------+                                         |
+|   | CoreDNS       |                                         |
+|   +---------------+                                         |
+|          |                                                  |
+|          | Returns CNAME: "api.github.com"                   |
+|          v                                                  |
+|   +---------------+                                         |
+|   | App Pod       |                                         |
+|   +---------------+                                         |
+|                                                             |
++--------------------------|----------------------------------+
+                           |
+                           | Direct outbound connection
+                           v
++-------------------------------------------------------------+
+| External Internet / Cloud Service                           |
+| api.github.com                                               |
++-------------------------------------------------------------+
 ```
 
 ---
 
-## 1. Client Pod
+## 3. Where is ExternalName Used?
 
-A temporary curl client Pod was created to test the ExternalName Service from inside the Kubernetes cluster.
+ExternalName can be useful for:
 
-### Manifest
+- Managed cloud databases such as AWS RDS, GCP CloudSQL, or MongoDB Atlas.
+- Third-party APIs and gateways.
+- Gradual migration of external or legacy infrastructure into Kubernetes.
 
-`client-pod.yaml`
+---
+
+## 4. Manifest
+
+### File: `service.yaml`
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: external-database-service
+spec:
+  type: ExternalName
+  externalName: api.github.com
+```
+
+### Key Fields
+
+- `spec.type: ExternalName` — configures the Service as a DNS alias.
+- `spec.externalName: api.github.com` — specifies the external DNS target.
+- No `selector`, `ports`, or `targetPort` are defined.
+
+---
+
+## 5. DNS Test Client
+
+### File: `client-pod.yaml`
 
 ```yaml
 apiVersion: v1
 kind: Pod
 metadata:
-  name: externalname-client
+  name: dns-test-client
 spec:
   containers:
     - name: curl
@@ -47,320 +110,287 @@ spec:
         - "3600"
 ```
 
-### Apply
-
-```powershell
-kubectl apply -f Kubernetes-Services/04-externalname/client-pod.yaml
-```
-
-### Verify
-
-```powershell
-kubectl get pod externalname-client
-```
-
-### Actual Result
-
-```text
-NAME                  READY   STATUS    RESTARTS   AGE
-externalname-client   1/1     Running   0          6s
-```
-
-### Screenshot
-
-![ExternalName Client Pod](screenshots/01-externalname-client-pod.png)
+The client Pod is used only to test DNS resolution and HTTP connectivity from inside the Kubernetes cluster.
 
 ---
 
-## 2. ExternalName Service
+## 6. How to Run and Test
 
-### Manifest
-
-`service.yaml`
-
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: external-service
-  labels:
-    app: external-service
-spec:
-  type: ExternalName
-  externalName: example.com
-```
-
-### Apply
+### Step 1: Apply the ExternalName Service
 
 ```powershell
 kubectl apply -f Kubernetes-Services/04-externalname/service.yaml
 ```
 
-### Verify
+Verify:
 
 ```powershell
-kubectl get svc external-service
+kubectl get svc external-database-service
 ```
 
 ### Actual Result
 
 ```text
-NAME               TYPE           CLUSTER-IP   EXTERNAL-IP   PORT(S)
-external-service   ExternalName   <none>       example.com   <none>
+NAME                        TYPE           CLUSTER-IP   EXTERNAL-IP      PORT(S)
+external-database-service   ExternalName   <none>       api.github.com   <none>
 ```
 
-The Service has:
+This confirms:
 
-- **Type:** `ExternalName`
-- **External Name:** `example.com`
-- **ClusterIP:** `<none>`
-- **Ports:** `<none>`
+- Type: `ExternalName`
+- ClusterIP: `<none>`
+- External Name: `api.github.com`
+- Ports: `<none>`
 
 ### Screenshot
 
-![ExternalName Service](screenshots/02-externalname-service.png)
+![ExternalName Service](screenshots/01-externalname-service.png)
 
 ---
 
-## 3. Service Details
+### Step 2: Deploy the DNS Test Pod
+
+```powershell
+kubectl apply -f Kubernetes-Services/04-externalname/client-pod.yaml
+```
+
+Verify:
+
+```powershell
+kubectl get pod dns-test-client
+```
+
+Actual result:
+
+```text
+NAME              READY   STATUS    RESTARTS   AGE
+dns-test-client   1/1     Running   0          ...
+```
+
+---
+
+### Step 3: Verify DNS CNAME Resolution
 
 Run:
 
 ```powershell
-kubectl describe svc external-service
+kubectl exec dns-test-client -- nslookup external-database-service
 ```
 
-### Actual Result
+The lookup produced:
 
 ```text
-Name:              external-service
+external-database-service.default.svc.cluster.local
+    canonical name = api.github.com
+```
+
+and resolved `api.github.com` to:
+
+```text
+20.207.73.85
+```
+
+The command also showed NXDOMAIN responses for shorter DNS search forms before successfully resolving the full Kubernetes Service FQDN. The successful canonical-name mapping is the important result.
+
+### Screenshot
+
+![ExternalName DNS Test](screenshots/02-externalname-dns-test.png)
+
+---
+
+### Step 4: Test HTTP Request
+
+The reference test was:
+
+```powershell
+kubectl exec dns-test-client -- curl -s -H "Host: api.github.com" https://external-database-service
+```
+
+On this Docker Desktop environment, the request initially returned:
+
+```text
+command terminated with exit code 60
+```
+
+This is a TLS certificate verification error because the HTTPS connection is made using the internal Service hostname while the external certificate is for `api.github.com`.
+
+To verify the ExternalName connection itself, certificate verification was disabled:
+
+```powershell
+kubectl exec dns-test-client -- curl -s -k -H "Host: api.github.com" https://external-database-service
+```
+
+The request then successfully returned GitHub API JSON, including:
+
+```json
+{
+  "current_user_url": "https://api.github.com/user",
+  "current_user_authorizations_html_url": "https://github.com/settings/connections/applications{/client_id}",
+  "authorizations_url": "https://api.github.com/authorizations"
+}
+```
+
+This demonstrates that:
+
+```text
+external-database-service
+        ↓
+api.github.com
+        ↓
+GitHub API
+```
+
+was successfully reached from inside the Kubernetes Pod.
+
+### Screenshot
+
+![ExternalName HTTP Test](screenshots/03-externalname-http-test.png)
+
+---
+
+## 7. Service Details
+
+Run:
+
+```powershell
+kubectl describe svc external-database-service
+```
+
+Actual important values:
+
+```text
+Name:              external-database-service
 Namespace:         default
-Labels:            app=external-service
-Annotations:       <none>
-Selector:          <none>
 Type:              ExternalName
-IP Families:       <none>
-IP:
+IP:                
 IPs:               <none>
-External Name:     example.com
-Session Affinity:  None
+External Name:     api.github.com
+Selector:          <none>
 Events:            <none>
 ```
 
-An ExternalName Service does not select Kubernetes Pods. Instead, it provides a DNS alias to the configured external DNS name.
-
 ### Screenshot
 
-![ExternalName Service Details](screenshots/03-externalname-service-details.png)
+![ExternalName Service Details](screenshots/04-externalname-service-details.png)
 
 ---
 
-## 4. DNS Resolution Test
+## 8. Final Verification
 
-The DNS mapping was tested from inside the Kubernetes cluster.
-
-Command:
+The Service and test Pod were verified with:
 
 ```powershell
-kubectl exec externalname-client -- nslookup external-service
+kubectl get svc external-database-service
+kubectl get pod dns-test-client
 ```
 
-The DNS server was:
+Actual results showed:
 
 ```text
-10.96.0.10
-```
-
-The full Kubernetes Service DNS name successfully resolved as:
-
-```text
-external-service.default.svc.cluster.local canonical name = example.com
-```
-
-The external name resolved to:
-
-```text
-104.20.23.154
-172.66.147.243
-```
-
-The command also displayed NXDOMAIN responses for shorter DNS forms before successfully resolving the full Service FQDN. The final successful canonical-name mapping demonstrates the ExternalName DNS alias.
-
-### Screenshot
-
-![ExternalName DNS Test](screenshots/04-externalname-dns-test.png)
-
----
-
-## 5. External HTTP Test
-
-The external destination was tested through the Kubernetes Service:
-
-```powershell
-kubectl exec externalname-client -- curl -I http://external-service
-```
-
-### Actual Result
-
-```text
-HTTP/1.1 403 Forbidden
-Date: Sun, 20 Sep 2026 10:24:45 GMT
-Content-Type: text/plain; charset=UTF-8
-Content-Length: 17
-Connection: keep-alive
-Server: cloudflare
-```
-
-The HTTP request reached the external destination and received an HTTP response from Cloudflare.
-
-The `403 Forbidden` response is from the external website/server; it does not indicate that the Kubernetes ExternalName DNS mapping failed.
-
-### Screenshot
-
-![ExternalName Application Test](screenshots/05-externalname-application-test.png)
-
----
-
-## 6. How ExternalName Works
-
-The flow demonstrated in this exercise is:
-
-```text
-Kubernetes client Pod
-        |
-        v
-external-service
-        |
-        v
-external-service.default.svc.cluster.local
-        |
-        | DNS CNAME
-        v
-example.com
-        |
-        v
-External server
-```
-
-Unlike a normal ClusterIP Service, an ExternalName Service:
-
-- Does not create a ClusterIP.
-- Does not select Kubernetes Pods.
-- Does not create normal Pod endpoints.
-- Provides a DNS alias to an external DNS name.
-
----
-
-## 7. Browser Test Note
-
-Opening:
-
-```text
-http://external-service
-```
-
-directly in the Windows browser does not work.
-
-The browser uses the host operating system's DNS configuration, not the Kubernetes cluster DNS service. Therefore, the Kubernetes-only DNS name is not resolvable from Windows Chrome.
-
-The correct verification was performed from inside the Kubernetes client Pod using:
-
-```powershell
-kubectl exec externalname-client -- nslookup external-service
+external-database-service   ExternalName   <none>   api.github.com   <none>
 ```
 
 and:
 
-```powershell
-kubectl exec externalname-client -- curl -I http://external-service
+```text
+dns-test-client   1/1   Running
 ```
+
+### Screenshot
+
+![ExternalName Final Verification](screenshots/05-externalname-final-verification.png)
 
 ---
 
-## 8. Cleanup
+## 9. Important Caveats
 
-After all screenshots were captured, the temporary resources were deleted:
+### No Port Remapping
+
+ExternalName operates at the DNS level. It does not provide Kubernetes port remapping.
+
+### TLS / HTTPS Hostname Consideration
+
+When HTTPS is accessed through an ExternalName alias, the external server's TLS certificate normally corresponds to the real external hostname, such as `api.github.com`, rather than the internal Kubernetes Service name.
+
+In this exercise, the reference command returned curl exit code `60`. The connection was then verified using `curl -k` to bypass certificate verification while retaining:
+
+```text
+Host: api.github.com
+```
+
+### No IP Addresses in `externalName`
+
+The `externalName` field should contain a DNS hostname such as:
+
+```text
+db.example.com
+```
+
+rather than a raw IP address.
+
+---
+
+## 10. Cleanup
+
+After the screenshots were captured:
 
 ```powershell
-kubectl delete -f Kubernetes-Services/04-externalname/service.yaml
 kubectl delete -f Kubernetes-Services/04-externalname/client-pod.yaml
+kubectl delete -f Kubernetes-Services/04-externalname/service.yaml
 ```
 
-Final verification:
-
-```powershell
-kubectl get pods
-kubectl get svc
-```
-
-The `external-service` Service was removed and the `externalname-client` Pod was deleted. Existing Session 10 workloads and Services remained.
-
-At the time of the immediate post-cleanup check, the client Pod briefly appeared as:
-
-```text
-externalname-client   1/1   Terminating
-```
-
-This is normal while Kubernetes completes deletion.
-
-The remaining Services were:
-
-```text
-app-recreate-service   NodePort    10.111.251.134   <none>   80:30040/TCP
-app-rolling-service    NodePort    10.96.26.158     <none>   80:30010/TCP
-kubernetes             ClusterIP   10.96.0.1        <none>   443/TCP
-myapp-canary-service   NodePort    10.104.138.184   <none>   80:30030/TCP
-myapp-service          NodePort    10.101.8.210     <none>   80:30020/TCP
-```
+The existing Session 10 workloads and Services were not deleted.
 
 ---
 
-## 9. Commands Summary
+## 11. Commands Summary
 
 ```powershell
-# Create client Pod
-kubectl apply -f Kubernetes-Services/04-externalname/client-pod.yaml
-
-# Verify client
-kubectl get pod externalname-client
-
-# Create ExternalName Service
+# Apply ExternalName Service
 kubectl apply -f Kubernetes-Services/04-externalname/service.yaml
 
 # Verify Service
-kubectl get svc external-service
+kubectl get svc external-database-service
+
+# Apply DNS test client
+kubectl apply -f Kubernetes-Services/04-externalname/client-pod.yaml
+
+# Verify client
+kubectl get pod dns-test-client
+
+# Verify DNS CNAME
+kubectl exec dns-test-client -- nslookup external-database-service
+
+# Reference HTTP test
+kubectl exec dns-test-client -- curl -s -H "Host: api.github.com" https://external-database-service
+
+# Docker Desktop verification when TLS certificate validation fails
+kubectl exec dns-test-client -- curl -s -k -H "Host: api.github.com" https://external-database-service
 
 # Inspect Service
-kubectl describe svc external-service
-
-# Test Kubernetes DNS
-kubectl exec externalname-client -- nslookup external-service
-
-# Test external HTTP destination
-kubectl exec externalname-client -- curl -I http://external-service
-
-# Cleanup
-kubectl delete -f Kubernetes-Services/04-externalname/service.yaml
-kubectl delete -f Kubernetes-Services/04-externalname/client-pod.yaml
+kubectl describe svc external-database-service
 
 # Final verification
-kubectl get pods
-kubectl get svc
+kubectl get svc external-database-service
+kubectl get pod dns-test-client
+
+# Cleanup
+kubectl delete -f Kubernetes-Services/04-externalname/client-pod.yaml
+kubectl delete -f Kubernetes-Services/04-externalname/service.yaml
 ```
 
 ---
 
 ## Conclusion
 
-The ExternalName Service was successfully created and tested.
+The ExternalName exercise demonstrates how Kubernetes CoreDNS can provide an internal DNS alias for an external service.
 
-The exercise demonstrated:
+In this Docker Desktop environment:
 
-- Creating an `ExternalName` Service
-- Mapping a Kubernetes Service name to `example.com`
-- Understanding that ExternalName uses DNS rather than Pod selectors
-- Verifying the Kubernetes DNS CNAME mapping
-- Resolving the external DNS destination from inside a Kubernetes Pod
-- Sending an HTTP request through the ExternalName Service
-- Understanding why the external server can return an HTTP `403 Forbidden` while the Kubernetes DNS mapping still works
-- Cleaning up the temporary Kubernetes resources
+- `external-database-service` was created as an `ExternalName` Service.
+- Its external target was exactly `api.github.com`.
+- The Service had no ClusterIP and no selector.
+- Kubernetes DNS successfully returned `canonical name = api.github.com`.
+- The external hostname resolved to `20.207.73.85` during the test.
+- The reference HTTPS command encountered curl certificate verification error 60.
+- Using `curl -k` for the test successfully reached the GitHub API and returned JSON.
