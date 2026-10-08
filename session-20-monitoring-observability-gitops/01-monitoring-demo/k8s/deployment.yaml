@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: monitoring-demo-app
+  namespace: default
+  labels:
+    app: monitoring-demo-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: monitoring-demo-app
+  template:
+    metadata:
+      labels:
+        app: monitoring-demo-app
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: app
+          image: python:3.12-slim
+          command:
+            - "sh"
+            - "-c"
+            - "pip install flask prometheus_client psutil && python -c 'from flask import Flask, jsonify, Response; import time, os, psutil; from prometheus_client import Counter, Gauge, generate_latest, CONTENT_TYPE_LATEST; app = Flask(__name__); C = Counter(\"http_requests_total\", \"HTTP Requests\", [\"endpoint\"]); G = Gauge(\"process_cpu_percent\", \"CPU\"); @app.route(\"/\")\ndef h(): C.labels(\"/\").inc(); return \"OK\"; @app.route(\"/health\")\ndef hl(): return jsonify({\"status\":\"healthy\"}); @app.route(\"/metrics\")\ndef m(): G.set(psutil.cpu_percent()); return Response(generate_latest(), mimetype=CONTENT_TYPE_LATEST); app.run(host=\"0.0.0.0\", port=8000)'"
+          ports:
+            - containerPort: 8000
+              name: metrics
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 20

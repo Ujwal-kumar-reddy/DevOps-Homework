@@ -1,0 +1,8 @@
+scratch/
+devops-heros-main/
+.DS_Store
+*.pyc
+__pycache__/
+.terraform/
+*.tfstate
+*.tfstate.backup
