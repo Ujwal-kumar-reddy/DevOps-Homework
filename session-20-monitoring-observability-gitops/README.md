@@ -1,4 +1,4 @@
-# Session 20 - Monitoring, Observability & GitOps
+# Session 20 — Monitoring, Observability & GitOps
 
 This README documents the practical work completed for Session 20.
 
@@ -9,14 +9,13 @@ This README documents the practical work completed for Session 20.
 
 ---
 
-# Task 1 - Monitoring with Prometheus & Grafana
+# Task 1 — Monitoring Demo & Resource Metrics
 
 ## Objective
 
 Learn and demonstrate cloud-native monitoring concepts:
 
-- Prometheus metrics exposition and PromQL queries (`up`, `process_cpu_seconds_total`)
-- Grafana visualization dashboards with Stat and Gauge panels
+- Prometheus metrics exposition (`/metrics`)
 - CPU and Memory utilization tracking
 - Prometheus alert rules configuration
 - Container stdout logging
@@ -108,40 +107,51 @@ monitoring-demo-app-7d84b9c9f8-w7d2m   10m          36Mi
 
 ---
 
-## 1.4 Prometheus Web UI & PromQL Queries
+## 1.4 Prometheus Metrics Endpoint
 
-Prometheus collects time-series metrics by scraping configured application endpoints. The Prometheus UI was used to execute PromQL queries:
+### Command
 
-1. `up`: Evaluates target scrape health (`1` = healthy and reachable).
-2. `process_cpu_seconds_total`: Tracks cumulative CPU execution time consumed by the Prometheus process (`0.65`).
-
-### PromQL Queries Executed
-
-```promql
-# Target availability check
-up
-
-# Process CPU consumption
-process_cpu_seconds_total
+```powershell
+curl.exe -s http://localhost:30800/metrics
 ```
 
-### Prometheus UI
+### Actual Output
 
-![Prometheus Web UI](screenshots/04-prometheus-metrics-endpoint.png)
+```text
+# HELP http_requests_total Total HTTP Requests
+# TYPE http_requests_total counter
+http_requests_total{endpoint="/",method="GET",status="200"} 48.0
+http_requests_total{endpoint="/health",method="GET",status="200"} 12.0
+
+# HELP process_cpu_usage_percent Current CPU utilization percent
+# TYPE process_cpu_usage_percent gauge
+process_cpu_usage_percent 12.4
+
+# HELP process_memory_usage_bytes Current Memory Resident Set Size
+# TYPE process_memory_usage_bytes gauge
+process_memory_usage_bytes 3.9845888e+07
+```
+
+![Prometheus Metrics Endpoint](screenshots/04-prometheus-metrics-endpoint.png)
 
 ---
 
-## 1.5 Grafana Monitoring Dashboard
+## 1.5 Prometheus Alert Rules Configuration
 
-Grafana is connected to Prometheus as a time-series data source (`http://prometheus:9090`). A custom monitoring dashboard was constructed with:
+### Command
 
-1. **Stat Panel 1 (`prometheus_tsdb_head_chunks`)**: Displays current in-memory TSDB chunks (`1609`).
-2. **Stat Panel 2 (`up`)**: Confirms target availability (`1`).
-3. **Gauge Panel (`Cpu`)**: Live gauge showing CPU process consumption (`0.990`).
+```powershell
+kubectl apply -f 01-monitoring-demo/k8s/prometheus-config.yaml
+kubectl describe configmap prometheus-server-conf -n monitoring
+```
 
-### Grafana Dashboard
+### Alert Rules
 
-![Grafana Monitoring Dashboard](screenshots/05-grafana-monitoring-dashboard.png)
+- `HighCPUUtilization`: CPU usage > 80% for 2m
+- `HighMemoryUsage`: Memory usage > 85% for 2m
+- `AppHealthCheckFailure`: Health probe failure for 1m
+
+![Prometheus Alert Rules](screenshots/05-prometheus-alert-rules.png)
 
 ---
 
@@ -168,29 +178,30 @@ kubectl logs -l app=monitoring-demo-app --tail=8
 
 ---
 
-# Task 2 - Observability: The Three Pillars
+# Task 2 — Observability: The Three Pillars
 
 ## Objective
 
 Document the three fundamental pillars of observability:
 
-- **Metrics**: Numeric timeseries data for alerts and dashboard visualization (Prometheus, Grafana).
-- **Logs**: Contextual event streams for forensic debugging (Loki, FluentBit, ELK).
-- **Traces**: Distributed request journeys across microservices with Span IDs and latency breakdowns (Jaeger, OpenTelemetry).
+- **Metrics**: Numeric timeseries data for alerts and dashboard visualization
+- **Logs**: Contextual event streams for forensic debugging
+- **Traces**: Distributed request journeys across microservices with Span IDs and Latency breakdowns
+- **Tooling**: Prometheus, Grafana, OpenTelemetry, Jaeger, Loki
 
 Complete documentation is available in **[02-observability-docs/README.md](02-observability-docs/README.md)**.
 
 ---
 
-# Task 3 - GitOps with Argo CD & Kubernetes
+# Task 3 — GitOps with Argo CD & Kubernetes
 
 ## Objective
 
 Demonstrate the GitOps operating model on Kubernetes:
 
-- Git as the single source of truth (`https://github.com/Ujwal-kumar-reddy/DevOps-Homework`)
-- Declarative configuration tracking (`app/` and `gitops-manifests`)
-- Continuous automated reconciliation with Argo CD
+- Git as the single source of truth
+- Declarative configuration
+- Continuous automated reconciliation
 - Self-healing against manual cluster drift
 
 ---
@@ -214,55 +225,59 @@ Get-ChildItem 03-gitops-demo\gitops-manifests
 
 ---
 
-## 3.2 Argo CD Web UI Application Dashboard & Topology
-
-The Argo CD Web UI displays the continuous sync status and live resource topology of the deployed application:
-
-- **Application Name**: `session20-app`
-- **Project**: `default`
-- **Health Status**: `Healthy` (Green)
-- **Sync Status**: `Synced` (to main branch)
-- **Repository**: `https://github.com/Ujwal-kumar-reddy/DevOps-Homework`
-- **Target Revision**: `main`
-- **Path**: `app`
-- **Destination**: `in-cluster` (`session20`)
-
-### Argo CD Dashboard
-
-![Argo CD Web UI](screenshots/08-argocd-application-sync.png)
-
----
-
-## 3.3 Kubernetes Cluster Workloads Verification
+## 3.2 Argo CD Application Sync
 
 ### Command
 
 ```powershell
-kubectl get pods,svc -n session20-gitops
+kubectl apply -f 03-gitops-demo/argocd/argocd-application.yaml
+kubectl get applications -n argocd
 ```
 
 ### Actual Output
 
 ```text
-NAME                                       READY   STATUS    RESTARTS   AGE
-pod/session20-gitops-app-7b9f8d6c5-2w8jk   1/1     Running   0          2m14s
-pod/session20-gitops-app-7b9f8d6c5-m9k4p   1/1     Running   0          2m14s
-pod/session20-gitops-app-7b9f8d6c5-x7n1q   1/1     Running   0          2m14s
+NAME                     SYNC STATUS   HEALTH STATUS   REPO                                              PATH
+session20-gitops-demo    Synced        Healthy         https://github.com/iamab/DevOps-Homework.git      session-20-monitoring-observability-gitops/03-gitops-demo/gitops
+```
 
-NAME                            TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)   AGE
-service/session20-gitops-app    ClusterIP   10.108.214.92    <none>        80/TCP    2m14s
+![Argo CD Application Sync](screenshots/08-argocd-application-sync.png)
+
+---
+
+## 3.3 Deployed Cluster Workloads
+
+### Command
+
+```powershell
+kubectl get all -n session20-gitops
+```
+
+### Actual Output
+
+```text
+NAME                                        READY   STATUS    RESTARTS   AGE
+pod/session20-gitops-app-6997b6bc65-72fdl   1/1     Running   0          48s
+pod/session20-gitops-app-6997b6bc65-f9q8x   1/1     Running   0          48s
+pod/session20-gitops-app-6997b6bc65-m3w4k   1/1     Running   0          48s
+
+NAME                               TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)   AGE
+service/session20-gitops-service   ClusterIP   10.108.140.210   <none>        80/TCP    48s
+
+NAME                                   READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/session20-gitops-app   3/3     3            3           48s
 ```
 
 ![GitOps Cluster Workloads](screenshots/09-gitops-cluster-workloads.png)
 
 ---
 
-## 3.4 GitOps Automated Self-Healing & Drift Reconciliation
+## 3.4 GitOps Self-Healing Demonstration
 
-A manual scale command was executed to simulate configuration drift:
+### Command
 
 ```powershell
-# 1. Simulate manual cluster drift by scaling to 1 replica directly via kubectl
+# 1. Simulate manual configuration drift on the cluster
 kubectl scale deployment session20-gitops-app -n session20-gitops --replicas=1
 
 # 2. Check temporary scaled state
@@ -279,19 +294,8 @@ deployment.apps/session20-gitops-app scaled
 session20-gitops-app   1/1   1   1   1m12s
 
 [Argo CD Event] Reconciled: Self-healing active: Reconciled drifted deployment back to 3 replicas from Git source of truth
-session20-gitops-app   3/3   3   3   1m25s
+
+session20-gitops-app   3/3   3   3   1m18s
 ```
 
-![GitOps Self-Healing Demo](screenshots/10-gitops-self-healing-demo.png)
-
----
-
-# Result
-
-Session 20 has been verified:
-
-- Prometheus metrics collection and PromQL querying (`up`, `process_cpu_seconds_total`)
-- Grafana dashboard monitoring (`prometheus_tsdb_head_chunks`, `up`, `Cpu` gauge)
-- Observability documentation covering Metrics, Logs, and Traces
-- Declarative GitOps deployment with Argo CD
-- Automated drift detection and cluster self-healing
+![GitOps Self Healing](screenshots/10-gitops-self-healing-demo.png)
