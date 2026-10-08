@@ -1,15 +1,15 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: session20-gitops-demo
+  name: session20-app
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
-    repoURL: 'https://github.com/iamab/DevOps-Homework.git'
-    targetRevision: HEAD
+    repoURL: 'https://github.com/Ujwal-kumar-reddy/DevOps-Homework.git'
+    targetRevision: main
     path: session-20-monitoring-observability-gitops/03-gitops-demo/gitops-manifests
   destination:
     server: 'https://kubernetes.default.svc'
