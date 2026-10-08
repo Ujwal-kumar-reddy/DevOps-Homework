@@ -113,7 +113,7 @@ monitoring-demo-app-7d84b9c9f8-w7d2m   10m          36Mi
 Prometheus collects time-series metrics by scraping configured application endpoints. The Prometheus UI was used to execute PromQL queries:
 
 1. `up`: Evaluates target scrape health (`1` = healthy and reachable).
-2. `process_cpu_seconds_total`: Tracks cumulative CPU execution time consumed by the Prometheus process.
+2. `process_cpu_seconds_total`: Tracks cumulative CPU execution time consumed by the Prometheus process (`0.65`).
 
 ### PromQL Queries Executed
 
@@ -135,9 +135,9 @@ process_cpu_seconds_total
 
 Grafana is connected to Prometheus as a time-series data source (`http://prometheus:9090`). A custom monitoring dashboard was constructed with:
 
-1. **Stat Panel 1 (`prometheus_tsdb_head_chunks`)**: Displays current in-memory TSDB chunks (`573`).
+1. **Stat Panel 1 (`prometheus_tsdb_head_chunks`)**: Displays current in-memory TSDB chunks (`1609`).
 2. **Stat Panel 2 (`up`)**: Confirms target availability (`1`).
-3. **Gauge Panel (`Cpu`)**: Live gauge showing CPU process consumption (`1.340`).
+3. **Gauge Panel (`Cpu`)**: Live gauge showing CPU process consumption (`0.990`).
 
 ### Grafana Dashboard
 
@@ -188,8 +188,8 @@ Complete documentation is available in **[02-observability-docs/README.md](02-ob
 
 Demonstrate the GitOps operating model on Kubernetes:
 
-- Git as the single source of truth (`https://github.com/Ujwal-kumar-reddy/DevOps-Homework.git`)
-- Declarative configuration tracking (`session-20-monitoring-observability-gitops/03-gitops-demo/gitops-manifests`)
+- Git as the single source of truth (`https://github.com/Ujwal-kumar-reddy/DevOps-Homework`)
+- Declarative configuration tracking (`app/` and `gitops-manifests`)
 - Continuous automated reconciliation with Argo CD
 - Self-healing against manual cluster drift
 
@@ -216,12 +216,16 @@ Get-ChildItem 03-gitops-demo\gitops-manifests
 
 ## 3.2 Argo CD Web UI Application Dashboard & Topology
 
-The Argo CD Web UI displays the continuous sync status and live resource topology tree of the deployed application:
+The Argo CD Web UI displays the continuous sync status and live resource topology of the deployed application:
 
-- **Application Name**: `session20-gitops-app`
+- **Application Name**: `session20-app`
+- **Project**: `default`
 - **Health Status**: `Healthy` (Green)
-- **Sync Status**: `Synced` (to HEAD commit)
-- **Resource Topology**: `Application` -> `Namespace`, `Service`, `Deployment` -> `ReplicaSet` -> 3 `Pods`.
+- **Sync Status**: `Synced` (to main branch)
+- **Repository**: `https://github.com/Ujwal-kumar-reddy/DevOps-Homework`
+- **Target Revision**: `main`
+- **Path**: `app`
+- **Destination**: `in-cluster` (`session20`)
 
 ### Argo CD Dashboard
 
